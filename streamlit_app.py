@@ -8,7 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from backend.db.sync_db import init_db_sync, query
-from backend.jobs.scheduler import start_scheduler
+from backend.jobs.scheduler import start_scheduler, _do_initial_sync
 
 logging.basicConfig(level=logging.INFO)
 
@@ -83,9 +83,15 @@ st.title("📈 BRVM Trading Desk")
 st.caption("Bourse Régionale des Valeurs Mobilières · Abidjan, Côte d'Ivoire")
 
 # Refresh button
-col_refresh, _ = st.columns([1, 9])
+col_refresh, col_force, _ = st.columns([1, 2, 7])
 with col_refresh:
     if st.button("🔄 Actualiser"):
+        st.cache_data.clear()
+        st.rerun()
+with col_force:
+    if st.button("⚡ Forcer synchronisation"):
+        with st.spinner("Synchronisation en cours…"):
+            _do_initial_sync()
         st.cache_data.clear()
         st.rerun()
 
@@ -98,8 +104,8 @@ DISPLAY_INDICES = ["BRVM Composite", "BRVM 30", "BRVM Prestige", "BRVM Principal
 
 if df_idx.empty:
     st.info(
-        "Données en cours de chargement (première synchronisation ~5 min). "
-        "Le scheduler récupère les cours automatiquement pendant les heures de marché."
+        "Synchronisation initiale en cours… Les données apparaîtront dans quelques secondes. "
+        "Si le chargement prend plus de 30 s, cliquez sur **⚡ Forcer synchronisation**."
     )
 else:
     metric_cols = st.columns(len(DISPLAY_INDICES))
@@ -124,8 +130,8 @@ df_q = _load_quotes()
 
 if df_q.empty:
     st.info(
-        "Aucune donnée de cours disponible. "
-        "Les données seront disponibles après la première synchronisation (~5 min)."
+        "Aucune donnée de cours disponible encore. "
+        "Cliquez sur **⚡ Forcer synchronisation** pour récupérer les données immédiatement."
     )
     st.stop()
 

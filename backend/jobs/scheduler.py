@@ -122,11 +122,65 @@ async def _refresh_market_data_async():
         logger.error(f"Error refreshing indices: {e}")
 
 
+def _do_initial_sync():
+    """
+    Run a one-time data fetch on startup, bypassing the trading-hours gate.
+    Populates the DB immediately so the UI shows data from the first load.
+    """
+    from backend.db.sync_db import executemany
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    logger.info("Running initial market data sync (startup)...")
+
+    try:
+        quotes = fetch_all_quotes()
+        if quotes:
+            params = [
+                (q["ticker"], today,
+                 q.get("open"), q.get("high"), q.get("low"),
+                 q["price"],
+                 q.get("volume") or 0, q.get("value") or 0,
+                 q.get("change_pct") or 0, q.get("source", "unknown"))
+                for q in quotes if q.get("price") and q["price"] > 0
+            ]
+            executemany(
+                """INSERT OR REPLACE INTO daily_quotes
+                   (ticker, date, open, high, low, close, volume, value, change_pct, source)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                params,
+            )
+            logger.info(f"Initial sync: inserted {len(params)} quotes")
+    except Exception as e:
+        logger.error(f"Initial sync quotes error: {e}")
+
+    try:
+        indices = fetch_indices()
+        if indices:
+            params = [
+                (idx["name"], today, idx["value"], idx["change_pct"])
+                for idx in indices
+            ]
+            executemany(
+                """INSERT OR REPLACE INTO indices
+                   (index_name, date, value, change_pct)
+                   VALUES (?, ?, ?, ?)""",
+                params,
+            )
+            logger.info(f"Initial sync: inserted {len(params)} indices")
+    except Exception as e:
+        logger.error(f"Initial sync indices error: {e}")
+
+
 def start_scheduler():
-    """Start BackgroundScheduler (thread-based, works in Streamlit)."""
+    """Start BackgroundScheduler (thread-based, works in Streamlit).
+    Also triggers an immediate initial sync in a background thread."""
+    import threading
     global _scheduler
     if _scheduler and _scheduler.running:
         return
+
+    # Immediate one-time sync so the DB is populated before the first cron fires
+    t = threading.Thread(target=_do_initial_sync, daemon=True, name="initial-sync")
+    t.start()
 
     from apscheduler.schedulers.background import BackgroundScheduler
     _scheduler = BackgroundScheduler(timezone="GMT")
