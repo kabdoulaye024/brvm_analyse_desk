@@ -10,12 +10,20 @@ from typing import Optional
 import requests
 from bs4 import BeautifulSoup
 
+try:
+    import cloudscraper
+    _scraper = cloudscraper.create_scraper(browser={"browser": "chrome", "platform": "windows", "mobile": False})
+except Exception:
+    _scraper = None
+
 logger = logging.getLogger(__name__)
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36",
-    "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
 }
 
 RICHBOURSE_BASE = "https://www.richbourse.com"
@@ -23,10 +31,15 @@ BRVM_ORG_BASE = "https://www.brvm.org"
 
 
 def _safe_get(url: str, timeout: int = 20, **kwargs) -> Optional[requests.Response]:
+    """GET with cloudscraper for richbourse (Cloudflare), plain requests for others."""
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=timeout, verify=False, **kwargs)
+        if "richbourse.com" in url and _scraper:
+            resp = _scraper.get(url, timeout=timeout, **kwargs)
+        else:
+            resp = requests.get(url, headers=HEADERS, timeout=timeout, verify=False, **kwargs)
         if resp.status_code == 200:
             return resp
+        logger.warning(f"GET {url}: HTTP {resp.status_code}")
     except Exception as e:
         logger.warning(f"GET {url}: {e}")
     return None

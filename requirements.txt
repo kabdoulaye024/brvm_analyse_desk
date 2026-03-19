@@ -4,6 +4,7 @@ aiosqlite==0.22.1
 apscheduler==3.10.4
 requests==2.32.3
 beautifulsoup4==4.12.3
+cloudscraper==1.2.71
 pandas==2.2.3
 lxml==5.3.2
 python-multipart==0.0.20
