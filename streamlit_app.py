@@ -35,6 +35,22 @@ def _init():
 
 _init()
 
+# ── CF proxy check ───────────────────────────────────────────────────────────────
+import os as _os
+try:
+    _cf_url = st.secrets.get("CF_WORKER_URL", _os.environ.get("CF_WORKER_URL", ""))
+except Exception:
+    _cf_url = _os.environ.get("CF_WORKER_URL", "")
+
+if not _cf_url:
+    st.warning(
+        "⚠️ **CF_WORKER_URL non configuré** — les scrapers tournent en mode direct depuis Streamlit Cloud "
+        "(IPs AWS bloquées par richbourse.com, brvm.org, madisinvest.com). "
+        "Ajoutez `CF_WORKER_URL = \"https://brvm-proxy.VOTRE-COMPTE.workers.dev\"` "
+        "dans **App settings → Secrets** pour activer le proxy Cloudflare.",
+        icon="⚠️",
+    )
+
 
 # ── Data helpers ────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)

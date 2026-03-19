@@ -112,6 +112,12 @@ def fetch_all_quotes() -> list[dict]:
     4. sikafinance  — AAZ page with full OHLCV
     Returns list of dicts with: ticker, price, change_pct, volume, value, open, high, low
     """
+    cf = _cf_worker_url()
+    if cf:
+        logger.info(f"fetch_all_quotes: using CF proxy {cf[:60]}")
+    else:
+        logger.warning("fetch_all_quotes: CF_WORKER_URL not set — direct requests (blocked on Streamlit Cloud)")
+
     # Source 1: brvm.org English endpoint — 47 tickers with full OHLCV
     resp = _safe_get(BRVM_ORG_EN, timeout=15)
     if resp:
@@ -120,8 +126,12 @@ def fetch_all_quotes() -> list[dict]:
             if len(results) >= 40:
                 logger.info(f"brvm.org/en: {len(results)} quotes fetched (OHLCV)")
                 return results
+            else:
+                logger.warning(f"brvm.org/en: only {len(results)} quotes parsed (response {len(resp.text)} chars)")
         except Exception as e:
             logger.warning(f"brvm.org/en parse error: {e}")
+    else:
+        logger.warning("brvm.org/en: no response")
 
     # Source 2: richbourse
     for url in [
@@ -130,12 +140,15 @@ def fetch_all_quotes() -> list[dict]:
     ]:
         resp = _safe_get(url, timeout=15)
         if not resp or len(resp.text) < 500:
+            logger.warning(f"richbourse: bad response from {url} (len={len(resp.text) if resp else 0})")
             continue
         try:
             results = _parse_richbourse_all(resp.text)
             if results:
                 logger.info(f"richbourse: {len(results)} quotes fetched")
                 return results
+            else:
+                logger.warning(f"richbourse: 0 quotes parsed from {url}")
         except Exception as e:
             logger.warning(f"richbourse parse error: {e}")
 
@@ -145,8 +158,10 @@ def fetch_all_quotes() -> list[dict]:
         if results:
             logger.info(f"madisinvest: {len(results)} quotes fetched")
             return results
+        else:
+            logger.warning("madisinvest: 0 quotes returned")
     except Exception as e:
-        logger.warning(f"madisinvest parse error: {e}")
+        logger.warning(f"madisinvest error: {e}")
 
     # Source 4: sikafinance AAZ page
     resp = _safe_get(SIKAFINANCE_AAZ, timeout=15)
@@ -156,9 +171,14 @@ def fetch_all_quotes() -> list[dict]:
             if results:
                 logger.info(f"sikafinance/aaz: {len(results)} quotes fetched")
                 return results
+            else:
+                logger.warning(f"sikafinance/aaz: 0 quotes parsed (response {len(resp.text)} chars)")
         except Exception as e:
             logger.warning(f"sikafinance/aaz parse error: {e}")
+    else:
+        logger.warning("sikafinance/aaz: no response")
 
+    logger.error("fetch_all_quotes: ALL sources failed — no data returned")
     return []
 
 
