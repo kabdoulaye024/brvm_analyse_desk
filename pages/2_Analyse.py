@@ -97,7 +97,7 @@ df = _load_ohlcv(ticker, days)
 
 
 @st.cache_data(ttl=300)
-def _load_live_history(ticker: str, days: int) -> pd.DataFrame:
+def _load_live_history(ticker: str, days: int) -> tuple[pd.DataFrame, str]:
     try:
         live = fetch_history(ticker, days)
         if live is not None and not live.empty:
@@ -106,16 +106,17 @@ def _load_live_history(ticker: str, days: int) -> pd.DataFrame:
             for c in ["open", "high", "low", "close", "volume"]:
                 if c in live.columns:
                     live[c] = pd.to_numeric(live[c], errors="coerce")
-            return live
-    except Exception:
-        pass
-    return pd.DataFrame()
+            return live, ""
+    except Exception as e:
+        return pd.DataFrame(), str(e)
+    return pd.DataFrame(), "fetch_history returned None or empty"
 
 
 # Fall back to live scraper when DB has fewer than 20 rows
+_live_err = ""
 if len(df) < 20:
     with st.spinner(f"Récupération des données historiques pour {ticker}…"):
-        live = _load_live_history(ticker, days)
+        live, _live_err = _load_live_history(ticker, days)
         if not live.empty:
             df = live
 
@@ -126,6 +127,18 @@ if df.empty or len(df) < 3:
         f"sur la période sélectionnée. Essayez une période plus longue ou revenez "
         "après la prochaine synchronisation."
     )
+    with st.expander("🔍 Debug — détails d'erreur"):
+        import os
+        try:
+            import streamlit as _st
+            cf = _st.secrets.get("CF_WORKER_URL", os.environ.get("CF_WORKER_URL", ""))
+        except Exception:
+            cf = os.environ.get("CF_WORKER_URL", "")
+        st.write(f"**CF_WORKER_URL configuré:** `{'oui — ' + cf[:40] if cf else 'non'}`")
+        if _live_err:
+            st.write(f"**Erreur fetch_history:** `{_live_err}`")
+        else:
+            st.write("fetch_history n'a retourné aucune donnée (pas d'exception)")
     st.stop()
 
 # Fill missing OHLC from close if needed
