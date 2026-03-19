@@ -166,7 +166,7 @@ def _parse_richbourse_all(html: str) -> list[dict]:
     """Parse richbourse variation table for all stocks."""
     results = []
     try:
-        dfs = pd.read_html(StringIO(html))
+        dfs = pd.read_html(StringIO(html), flavor="lxml")
     except Exception:
         return results
 
@@ -219,7 +219,7 @@ def _parse_brvm_org_en(html: str) -> list[dict]:
     """
     results = []
     try:
-        dfs = pd.read_html(StringIO(html), thousands=" ")
+        dfs = pd.read_html(StringIO(html), thousands=" ", flavor="lxml")
     except Exception:
         return results
 
@@ -298,7 +298,7 @@ def _parse_sikafinance_aaz(html: str) -> list[dict]:
 
     results = []
     try:
-        dfs = pd.read_html(StringIO(html), thousands=" ")
+        dfs = pd.read_html(StringIO(html), thousands=" ", flavor="lxml")
     except Exception:
         return results
 
@@ -408,7 +408,7 @@ def _parse_sikafinance_all(html: str) -> list[dict]:
     """Parse sikafinance cotations page."""
     results = []
     try:
-        dfs = pd.read_html(StringIO(html))
+        dfs = pd.read_html(StringIO(html), flavor="lxml")
     except Exception:
         return results
 
@@ -596,7 +596,7 @@ def _parse_hist_html(html: str) -> pd.DataFrame:
 def _parse_richbourse_hist_html(html: str) -> pd.DataFrame:
     """Parse richbourse historique HTML table into a DataFrame."""
     try:
-        dfs = pd.read_html(StringIO(html), thousands=" ")
+        dfs = pd.read_html(StringIO(html), thousands=" ", flavor="lxml")
     except Exception:
         return pd.DataFrame()
 
@@ -798,7 +798,7 @@ def fetch_indices() -> list[dict]:
     resp = _safe_get(BRVM_ORG_EN, timeout=15)
     if resp:
         try:
-            dfs = pd.read_html(StringIO(resp.text), thousands=" ")
+            dfs = pd.read_html(StringIO(resp.text), thousands=" ", flavor="lxml")
             for df in dfs:
                 if len(df.columns) < 3:
                     continue
@@ -831,7 +831,7 @@ def fetch_indices() -> list[dict]:
             import requests as _req
             r = _req.get("https://www.brvm.org/fr/cours-indices/0",
                          headers=HEADERS, timeout=15, verify=False)
-            dfs = pd.read_html(StringIO(r.text), thousands=" ")
+            dfs = pd.read_html(StringIO(r.text), thousands=" ", flavor="lxml")
             for df in dfs:
                 if len(df.columns) < 3:
                     continue
@@ -859,7 +859,7 @@ def fetch_indices() -> list[dict]:
         resp = _safe_get(f"{RICHBOURSE_BASE}/common/indices", timeout=15)
         if resp:
             try:
-                dfs = pd.read_html(StringIO(resp.text))
+                dfs = pd.read_html(StringIO(resp.text), flavor="lxml")
                 for df in dfs:
                     df.columns = [str(c).strip().lower() for c in df.columns]
                     for _, row in df.iterrows():
@@ -1093,7 +1093,7 @@ def fetch_richbourse_dividends(limit: int = 60) -> list[dict]:
 
     items = []
     try:
-        dfs = pd.read_html(StringIO(resp.text))
+        dfs = pd.read_html(StringIO(resp.text), flavor="lxml")
     except Exception:
         dfs = []
 
