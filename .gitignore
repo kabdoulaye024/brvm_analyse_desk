@@ -45,3 +45,9 @@ Thumbs.db
 BRVM_Dashboard.xlsx
 data/.fuse_hidden*
 data/brvm.db
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
