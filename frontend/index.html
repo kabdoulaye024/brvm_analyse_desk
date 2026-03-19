@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BRVM Trading Desk</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⬡</text></svg>">
+    <link rel="stylesheet" href="/assets/css/styles.css">
+    <!-- Lightweight Charts (TradingView) -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Sidebar -->
+        <nav id="sidebar">
+            <div class="sidebar-header">
+                <span class="logo">⬡</span>
+                <span class="logo-text">BRVM Desk</span>
+            </div>
+            <ul class="nav-items">
+                <li class="nav-item active" data-page="market">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-label">Marché</span>
+                </li>
+                <li class="nav-item" data-page="portfolio">
+                    <span class="nav-icon">💼</span>
+                    <span class="nav-label">Portefeuille</span>
+                </li>
+                <li class="nav-item" data-page="analysis">
+                    <span class="nav-icon">🔍</span>
+                    <span class="nav-label">Analyse</span>
+                </li>
+                <li class="nav-item" data-page="intelligence">
+                    <span class="nav-icon">📡</span>
+                    <span class="nav-label">Intelligence</span>
+                </li>
+            </ul>
+            <div class="sidebar-footer">
+                <div class="status-dot" id="connectionStatus"></div>
+                <span class="status-text" id="statusText">Connexion...</span>
+            </div>
+        </nav>
+
+        <!-- Main content -->
+        <main id="content">
+            <!-- Pages loaded dynamically -->
+        </main>
+    </div>
+
+    <!-- Toast notifications -->
+    <div id="toasts"></div>
+
+    <script src="/assets/js/utils.js"></script>
+    <script src="/assets/js/api.js"></script>
+    <script src="/assets/js/components.js"></script>
+    <script src="/assets/js/market.js"></script>
+    <script src="/assets/js/portfolio.js"></script>
+    <script src="/assets/js/analysis.js"></script>
+    <script src="/assets/js/intelligence.js"></script>
+    <script src="/assets/js/app.js"></script>
+</body>
+</html>
