@@ -4,9 +4,16 @@ Tables: stocks, daily_quotes, indices, portfolio_transactions, capital_flows,
         watchlist, alerts, news_cache, corporate_events
 """
 import aiosqlite
+import json
 import os
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "brvm.db")
+# DATA_DIR can be overridden via env var (e.g. persistent disk on Render)
+_data_dir = os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "data"))
+DB_PATH = os.path.join(_data_dir, "brvm.db")
+
+# Seed file is always relative to the repo (committed to git)
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_SEED_PATH = os.path.join(_REPO_ROOT, "data", "seed.json")
 
 SCHEMA_SQL = """
 -- Référentiel des titres cotés
@@ -156,13 +163,51 @@ CREATE INDEX IF NOT EXISTS idx_news_date ON news_cache(published_at DESC);
 
 
 async def init_db():
-    """Initialize database with schema."""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    """Initialize database with schema, then seed reference data if empty."""
+    os.makedirs(_data_dir, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
         # Enable WAL mode for better concurrent access
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA busy_timeout=5000")
         await db.executescript(SCHEMA_SQL)
+        await db.commit()
+    await _seed_if_empty()
+
+
+async def _seed_if_empty():
+    """Seed stocks + fundamentals from seed.json on first run (empty DB)."""
+    if not os.path.exists(_SEED_PATH):
+        return
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        count = (await (await db.execute("SELECT COUNT(*) FROM fundamentals")).fetchone())[0]
+        if count > 0:
+            return  # Already seeded
+        with open(_SEED_PATH, encoding="utf-8") as f:
+            seed = json.load(f)
+        # Insert stocks
+        for s in seed.get("stocks", []):
+            await db.execute(
+                """INSERT OR IGNORE INTO stocks (ticker, name, sector, country, description, shares_outstanding, updated_at)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (s["ticker"], s["name"], s["sector"], s.get("country", "CI"),
+                 s.get("description"), s.get("shares_outstanding"), s.get("updated_at")),
+            )
+        # Insert fundamentals
+        for fu in seed.get("fundamentals", []):
+            await db.execute(
+                """INSERT OR IGNORE INTO fundamentals
+                   (ticker, sector, period, year, is_bank, shares_outstanding, dividend, eps_prev, eps_n2,
+                    equity, net_income, total_assets, total_debt, eps_stability, pnb, bank_result,
+                    credit_outstanding, client_deposits, per, market_cap, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (fu["ticker"], fu.get("sector"), fu.get("period"), fu.get("year"), fu.get("is_bank", 0),
+                 fu.get("shares_outstanding"), fu.get("dividend"), fu.get("eps_prev"), fu.get("eps_n2"),
+                 fu.get("equity"), fu.get("net_income"), fu.get("total_assets"), fu.get("total_debt"),
+                 fu.get("eps_stability"), fu.get("pnb"), fu.get("bank_result"),
+                 fu.get("credit_outstanding"), fu.get("client_deposits"),
+                 fu.get("per"), fu.get("market_cap"), fu.get("updated_at")),
+            )
         await db.commit()
 
 

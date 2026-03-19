@@ -19,6 +19,8 @@ env/
 data/*.db
 data/*.db-shm
 data/*.db-wal
+# Seed data committed to git (needed for cloud seeding)
+!data/seed.json
 
 # Fichiers OS
 .DS_Store
