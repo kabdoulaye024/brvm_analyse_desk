@@ -3,12 +3,10 @@ services:
     name: brvm-trading-desk
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python -m uvicorn app:app --host 0.0.0.0 --port $PORT
+    startCommand: streamlit run streamlit_app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
     envVars:
       - key: DATA_DIR
         value: /data
-      - key: PYTHON_VERSION
-        value: "3.12"
     disk:
       name: brvm-data
       mountPath: /data
