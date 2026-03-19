@@ -2,9 +2,10 @@
 BRVM market data scrapers.
 Cascade: richbourse → brvm.org → sikafinance → madisinvest
 Ported and adapted from the existing screener v6.0.
+All requests route through CF_WORKER_URL proxy when configured (bypasses IP blocks).
 """
-import asyncio
 import logging
+import os
 import re
 from datetime import datetime, timedelta
 from io import StringIO
@@ -45,6 +46,16 @@ SIKAFINANCE_AAZ  = "https://www.sikafinance.com/marches/aaz"
 
 _NULS = {"", "-", "–", "—", "N/D", "N/A", "nd", "na", "nc", "n/c", "null", "none"}
 
+# ── Cloudflare Worker proxy ──────────────────────────────────────────────────
+# When CF_WORKER_URL is set (Streamlit secret or env var), all GET requests
+# are relayed through the Worker so Streamlit Cloud IPs never hit scrapers.
+def _cf_worker_url() -> str:
+    try:
+        import streamlit as st
+        return st.secrets.get("CF_WORKER_URL", os.environ.get("CF_WORKER_URL", ""))
+    except Exception:
+        return os.environ.get("CF_WORKER_URL", "")
+
 
 def _to_float(v, default=None):
     s = (str(v).replace(" ", "").replace("\u202f", "").replace("\u2009", "")
@@ -57,13 +68,28 @@ def _to_float(v, default=None):
         return default
 
 
-def _safe_get(url: str, timeout: int = 20, **kwargs) -> Optional[requests.Response]:
-    """GET with cloudscraper for richbourse (Cloudflare), plain requests for others."""
+def _safe_get(url: str, timeout: int = 20, params: dict = None, **kwargs) -> Optional[requests.Response]:
+    """
+    Universal GET with proxy support:
+    - With CF_WORKER_URL: relay through Cloudflare Worker (bypasses IP blocks)
+    - Without: cloudscraper for richbourse, plain requests for others
+    """
     try:
-        if "richbourse.com" in url and _scraper:
-            resp = _scraper.get(url, timeout=timeout, verify=False, **kwargs)
+        cf_worker = _cf_worker_url()
+        if cf_worker:
+            # Encode params into URL before relaying
+            target = url
+            if params:
+                from urllib.parse import urlencode
+                sep = "&" if "?" in target else "?"
+                target = target + sep + urlencode(params)
+            relay = f"{cf_worker}/?url={requests.utils.quote(target, safe='')}"
+            resp = requests.get(relay, timeout=timeout)
+        elif "richbourse.com" in url and _scraper:
+            resp = _scraper.get(url, timeout=timeout, verify=False, params=params, **kwargs)
         else:
-            resp = requests.get(url, headers=HEADERS, timeout=timeout, verify=False, **kwargs)
+            resp = requests.get(url, headers=HEADERS, timeout=timeout, verify=False,
+                                params=params, **kwargs)
         if resp.status_code == 200:
             return resp
         logger.warning(f"GET {url}: HTTP {resp.status_code}")
@@ -567,111 +593,132 @@ def _parse_hist_html(html: str) -> pd.DataFrame:
     return df.dropna(subset=["date", "close"]).sort_values("date").reset_index(drop=True)
 
 
-def _fetch_richbourse_page(url: str, page: int) -> pd.DataFrame:
-    """Fetch one paginated page from richbourse historique."""
+def _parse_richbourse_hist_html(html: str) -> pd.DataFrame:
+    """Parse richbourse historique HTML table into a DataFrame."""
     try:
-        if _scraper:
-            resp = _scraper.get(url, params={"page": page}, timeout=15, verify=False)
-        else:
-            resp = requests.get(url, headers=HEADERS, params={"page": page},
-                                timeout=15, verify=False)
-        if resp.status_code != 200 or len(resp.text) < 500:
-            return pd.DataFrame()
-        dfs = pd.read_html(StringIO(resp.text), thousands=" ")
-        for df in dfs:
-            if len(df) < 3:
-                continue
-            cols = [str(c).lower() for c in df.columns]
-            # Identify date and close columns
-            idx_date  = next((i for i, c in enumerate(cols) if "date" in c), None)
-            idx_close = next((i for i, c in enumerate(cols)
-                              if any(k in c for k in ["cours ajusté", "cours ajuste",
-                                                       "cours normal", "ajust", "close", "cours"])), None)
-            idx_vol   = next((i for i, c in enumerate(cols)
-                              if any(k in c for k in ["volume ajusté", "volume ajuste",
-                                                       "volume normal", "vol"])), None)
-            idx_chg   = next((i for i, c in enumerate(cols)
-                              if "variation" in c or "var" in c or "%" in c), None)
-            idx_val   = next((i for i, c in enumerate(cols)
-                              if "valeur" in c or "montant" in c or "fcfa" in c), None)
-            if idx_date is None or idx_close is None:
-                continue
+        dfs = pd.read_html(StringIO(html), thousands=" ")
+    except Exception:
+        return pd.DataFrame()
 
-            rows = []
-            for _, row in df.iterrows():
-                date_raw = str(row.iloc[idx_date]).strip()
-                close_raw = row.iloc[idx_close]
-                close = _to_float(close_raw)
-                if not close or close <= 0:
-                    continue
-                try:
-                    # Parse DD/MM/YYYY
-                    dt = pd.to_datetime(date_raw, dayfirst=True, errors="coerce")
-                    if pd.isna(dt):
-                        continue
-                except Exception:
-                    continue
-                r = {
-                    "date": dt,
-                    "close": close,
-                    "volume": _to_float(row.iloc[idx_vol], 0) if idx_vol is not None else 0,
-                }
-                if idx_chg is not None:
-                    r["change_pct"] = _to_float(row.iloc[idx_chg], 0.0)
-                if idx_val is not None:
-                    r["value"] = _to_float(row.iloc[idx_val], 0)
-                rows.append(r)
+    for df in dfs:
+        if len(df) < 3:
+            continue
+        cols = [str(c).lower() for c in df.columns]
+        idx_date  = next((i for i, c in enumerate(cols) if "date" in c), None)
+        idx_close = next((i for i, c in enumerate(cols)
+                          if any(k in c for k in ["cours ajusté", "cours ajuste",
+                                                   "cours normal", "ajust", "close", "cours"])), None)
+        idx_vol   = next((i for i, c in enumerate(cols)
+                          if any(k in c for k in ["volume ajusté", "volume ajuste",
+                                                   "volume normal", "vol"])), None)
+        idx_chg   = next((i for i, c in enumerate(cols)
+                          if "variation" in c or "var" in c or "%" in c), None)
+        if idx_date is None or idx_close is None:
+            continue
 
-            if rows:
-                df_out = pd.DataFrame(rows)
-                # Compute synthetic OHLC from close + change_pct for candlestick charts
-                if "change_pct" in df_out.columns:
-                    chg = df_out["change_pct"].fillna(0) / 100
-                    df_out["open"] = (df_out["close"] / (1 + chg)).round(0)
-                    df_out["high"] = df_out[["open", "close"]].max(axis=1)
-                    df_out["low"]  = df_out[["open", "close"]].min(axis=1)
-                return df_out
-    except Exception as e:
-        logger.debug(f"richbourse page {page}: {e}")
+        rows = []
+        for _, row in df.iterrows():
+            date_raw = str(row.iloc[idx_date]).strip()
+            close = _to_float(row.iloc[idx_close])
+            if not close or close <= 0:
+                continue
+            dt = pd.to_datetime(date_raw, dayfirst=True, errors="coerce")
+            if pd.isna(dt):
+                continue
+            r = {
+                "date": dt,
+                "close": close,
+                "volume": _to_float(row.iloc[idx_vol], 0) if idx_vol is not None else 0,
+            }
+            if idx_chg is not None:
+                r["change_pct"] = _to_float(row.iloc[idx_chg], 0.0)
+            rows.append(r)
+
+        if rows:
+            df_out = pd.DataFrame(rows)
+            if "change_pct" in df_out.columns:
+                chg = df_out["change_pct"].fillna(0) / 100
+                df_out["open"] = (df_out["close"] / (1 + chg)).round(0)
+                df_out["high"] = df_out[["open", "close"]].max(axis=1)
+                df_out["low"]  = df_out[["open", "close"]].min(axis=1)
+            return df_out
+
     return pd.DataFrame()
 
 
 def _fetch_richbourse_hist(tk: str, nb: int = 365) -> pd.DataFrame:
     """
-    Historical data from richbourse.com using pagination.
-    Richbourse returns 20 rows per page; page param goes back to ~1998.
-    Fetches pages in parallel to cover the requested number of trading days.
+    Historical data from richbourse.com.
+    Strategy (v6.0):
+      1. Default URL (no params) — returns most recent ~20 rows
+      2. Date-range GET params — 3 rolling windows covering nb days
+      3. Date-range POST fallback (direct, no proxy) for each window
+    All routed through CF_WORKER proxy when configured.
     """
-    import math
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
     url = f"{RICHBOURSE_BASE}/common/variation/historique/{tk}"
-
-    # Each page = 20 trading days. Add 20% buffer for weekends/holidays.
-    trading_days_needed = int(nb * (5 / 7)) + 10
-    n_pages = math.ceil(trading_days_needed / 20) + 2   # +2 buffer pages
-    n_pages = min(n_pages, 350)  # never exceed ~25 years
-
-    logger.info(f"richbourse hist: fetching {n_pages} pages for {tk} ({nb} days requested)")
-
-    # Fetch all pages in parallel (max 8 concurrent)
     frames = []
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        futures = {ex.submit(_fetch_richbourse_page, url, p): p
-                   for p in range(1, n_pages + 1)}
-        for fut in as_completed(futures):
-            df_p = fut.result()
-            if not df_p.empty:
-                frames.append(df_p)
+
+    # Step 1: default fetch
+    resp = _safe_get(url, timeout=20)
+    if resp and "<table" in resp.text.lower():
+        df0 = _parse_richbourse_hist_html(resp.text)
+        if not df0.empty:
+            frames.append(df0)
+            logger.debug(f"richbourse hist default: {len(df0)} pts for {tk}")
+
+    # Step 2: date-range windows
+    today = datetime.now()
+    # Build overlapping windows to cover nb days
+    windows = []
+    step_days = 180
+    end = today
+    total_days = nb + 90  # buffer
+    while total_days > 0:
+        start = end - timedelta(days=step_days)
+        windows.append((start, end))
+        end = start + timedelta(days=10)  # small overlap
+        total_days -= step_days
+
+    for d_start, d_end in windows:
+        params = {
+            "action": tk,
+            "periode": "Journalière",
+            "date_debut": d_start.strftime("%Y-%m-%d"),
+            "date_fin": d_end.strftime("%Y-%m-%d"),
+        }
+        resp = _safe_get(url, timeout=20, params=params)
+        if resp and "<table" in resp.text.lower():
+            df_i = _parse_richbourse_hist_html(resp.text)
+            if not df_i.empty:
+                frames.append(df_i)
+                continue
+        # POST fallback (direct, bypasses proxy — last resort)
+        try:
+            post_data = {
+                "action": tk,
+                "periode": "Journalière",
+                "date_debut": d_start.strftime("%d/%m/%Y"),
+                "date_fin": d_end.strftime("%d/%m/%Y"),
+            }
+            r = requests.post(url, data=post_data, headers=HEADERS, timeout=20, verify=False)
+            if r.status_code == 200 and "<table" in r.text.lower():
+                df_i = _parse_richbourse_hist_html(r.text)
+                if not df_i.empty:
+                    frames.append(df_i)
+        except Exception:
+            pass
 
     if not frames:
+        logger.warning(f"richbourse hist: no data for {tk}")
         return pd.DataFrame()
 
-    return (pd.concat(frames, ignore_index=True)
-              .drop_duplicates(subset=["date"])
-              .dropna(subset=["date", "close"])
-              .sort_values("date")
-              .reset_index(drop=True))
+    merged = (pd.concat(frames, ignore_index=True)
+                .drop_duplicates(subset=["date"])
+                .dropna(subset=["date", "close"])
+                .sort_values("date")
+                .reset_index(drop=True))
+    logger.info(f"richbourse hist: {len(merged)} pts for {tk}")
+    return merged
 
 
 def _fetch_sikafinance_hist(tk: str) -> pd.DataFrame:

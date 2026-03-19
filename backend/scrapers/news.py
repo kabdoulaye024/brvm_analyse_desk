@@ -2,8 +2,10 @@
 News scraper for BRVM Trading Desk.
 Cascade: brvm.org → richbourse.com
 Returns list of dicts: title, url, published_at, source, summary.
+All requests route through CF_WORKER_URL proxy when configured.
 """
 import logging
+import os
 import re
 from typing import Optional
 
@@ -33,10 +35,22 @@ RICHBOURSE_BASE = "https://www.richbourse.com"
 BRVM_ORG_BASE = "https://www.brvm.org"
 
 
-def _safe_get(url: str, timeout: int = 20, **kwargs) -> Optional[requests.Response]:
-    """GET with cloudscraper for richbourse (Cloudflare), plain requests for others."""
+def _cf_worker_url() -> str:
     try:
-        if "richbourse.com" in url and _scraper:
+        import streamlit as st
+        return st.secrets.get("CF_WORKER_URL", os.environ.get("CF_WORKER_URL", ""))
+    except Exception:
+        return os.environ.get("CF_WORKER_URL", "")
+
+
+def _safe_get(url: str, timeout: int = 20, **kwargs) -> Optional[requests.Response]:
+    """GET with proxy support (CF Worker > cloudscraper > plain requests)."""
+    try:
+        cf_worker = _cf_worker_url()
+        if cf_worker:
+            relay = f"{cf_worker}/?url={requests.utils.quote(url, safe='')}"
+            resp = requests.get(relay, timeout=timeout)
+        elif "richbourse.com" in url and _scraper:
             resp = _scraper.get(url, timeout=timeout, verify=False, **kwargs)
         else:
             resp = requests.get(url, headers=HEADERS, timeout=timeout, verify=False, **kwargs)
