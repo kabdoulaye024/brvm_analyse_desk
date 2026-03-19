@@ -58,7 +58,7 @@ def _safe_get(url: str, timeout: int = 20, **kwargs) -> Optional[requests.Respon
     """GET with cloudscraper for richbourse (Cloudflare), plain requests for others."""
     try:
         if "richbourse.com" in url and _scraper:
-            resp = _scraper.get(url, timeout=timeout, **kwargs)
+            resp = _scraper.get(url, timeout=timeout, verify=False, **kwargs)
         else:
             resp = requests.get(url, headers=HEADERS, timeout=timeout, verify=False, **kwargs)
         if resp.status_code == 200:
@@ -567,8 +567,11 @@ def _parse_hist_html(html: str) -> pd.DataFrame:
 def _fetch_richbourse_page(url: str, page: int) -> pd.DataFrame:
     """Fetch one paginated page from richbourse historique."""
     try:
-        resp = requests.get(url, headers=HEADERS, params={"page": page},
-                            timeout=15, verify=False)
+        if _scraper:
+            resp = _scraper.get(url, params={"page": page}, timeout=15, verify=False)
+        else:
+            resp = requests.get(url, headers=HEADERS, params={"page": page},
+                                timeout=15, verify=False)
         if resp.status_code != 200 or len(resp.text) < 500:
             return pd.DataFrame()
         dfs = pd.read_html(StringIO(resp.text), thousands=" ")

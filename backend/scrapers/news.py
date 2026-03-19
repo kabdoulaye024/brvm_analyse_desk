@@ -34,7 +34,7 @@ def _safe_get(url: str, timeout: int = 20, **kwargs) -> Optional[requests.Respon
     """GET with cloudscraper for richbourse (Cloudflare), plain requests for others."""
     try:
         if "richbourse.com" in url and _scraper:
-            resp = _scraper.get(url, timeout=timeout, **kwargs)
+            resp = _scraper.get(url, timeout=timeout, verify=False, **kwargs)
         else:
             resp = requests.get(url, headers=HEADERS, timeout=timeout, verify=False, **kwargs)
         if resp.status_code == 200:
