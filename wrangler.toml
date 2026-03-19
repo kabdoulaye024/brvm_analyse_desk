@@ -1,0 +1,5 @@
+name = "brvm-proxy"
+main = "cloudflare_worker.js"
+compatibility_date = "2025-09-27"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
