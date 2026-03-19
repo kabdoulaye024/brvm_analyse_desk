@@ -8,7 +8,10 @@ import re
 from typing import Optional
 
 import requests
+import urllib3
 from bs4 import BeautifulSoup
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 try:
     import cloudscraper

@@ -95,19 +95,29 @@ def _load_latest_quote(ticker: str) -> dict:
 
 df = _load_ohlcv(ticker, days)
 
+
+@st.cache_data(ttl=300)
+def _load_live_history(ticker: str, days: int) -> pd.DataFrame:
+    try:
+        live = fetch_history(ticker, days)
+        if live is not None and not live.empty:
+            live = live.copy()
+            live["date"] = pd.to_datetime(live["date"])
+            for c in ["open", "high", "low", "close", "volume"]:
+                if c in live.columns:
+                    live[c] = pd.to_numeric(live[c], errors="coerce")
+            return live
+    except Exception:
+        pass
+    return pd.DataFrame()
+
+
 # Fall back to live scraper when DB has fewer than 20 rows
 if len(df) < 20:
     with st.spinner(f"Récupération des données historiques pour {ticker}…"):
-        try:
-            live = fetch_history(ticker, days)
-            if live is not None and not live.empty:
-                df = live.copy()
-                df["date"] = pd.to_datetime(df["date"])
-                for c in ["open", "high", "low", "close", "volume"]:
-                    if c in df.columns:
-                        df[c] = pd.to_numeric(df[c], errors="coerce")
-        except Exception as e:
-            st.warning(f"Impossible de récupérer les données live : {e}")
+        live = _load_live_history(ticker, days)
+        if not live.empty:
+            df = live
 
 if df.empty or len(df) < 3:
     ticker_name = TICKERS_BRVM.get(ticker, (ticker,))[0]

@@ -11,8 +11,11 @@ from io import StringIO
 from typing import Optional
 
 import requests
+import urllib3
 from bs4 import BeautifulSoup
 import pandas as pd
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 try:
     import cloudscraper
@@ -723,8 +726,9 @@ def _fetch_sikafinance_hist(tk: str) -> pd.DataFrame:
 def _fetch_brvm_org_hist(tk: str) -> pd.DataFrame:
     """Historical data from brvm.org."""
     urls = [
+        f"https://www.brvm.org/en/cours/show/{tk}/0/BVRM",
         f"https://www.brvm.org/fr/cours/show/{tk}/0/BVRM",
-        f"https://www.brvm.org/fr/cours-actions/historique/{tk}",
+        f"https://www.brvm.org/en/cours-actions/historique/{tk}",
     ]
     for url in urls:
         resp = _safe_get(url, timeout=15)
