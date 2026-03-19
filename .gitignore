@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environnement
+.env
+.env.local
+venv/
+.venv/
+env/
+
+# Base de données (données locales, ne pas versionner)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Fichiers OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+
+# Excel temp
+~$*.xlsx
+~$*.xlsm
+
+# Cache
+.cache/
+.claude/settings.local.json
+.~lock.*
+BRVM_Dashboard.xlsx
+data/.fuse_hidden*
+data/brvm.db
