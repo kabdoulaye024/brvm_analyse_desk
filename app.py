@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse
 
 from backend.db.schema import init_db
 from backend.api.routes import router
-from backend.jobs.scheduler import start_scheduler, stop_scheduler
+from backend.jobs.scheduler import start_async_scheduler as start_scheduler, stop_scheduler
 
 logging.basicConfig(
     level=logging.INFO,
