@@ -29,6 +29,14 @@ PARAMS = {
     "catalyst_weight": 0.20,
     "liquidity_weight": 0.10,
 
+    # Export R automatique de l'indice (package BRVM de K.F. Sessie).
+    # Si l'historique BRVM 30 local est absent/trop vieux et que Rscript est
+    # disponible, data_loader lance export_brvm30.R avant tout repli synthétique.
+    "r_export_enabled": True,
+    "r_export_max_age_days": 7,        # fraîcheur exigée du fichier brvm30.csv
+    "r_export_timeout_s": 300,
+    "r_export_from": "2019-01-01",
+
     # Technique
     "ma_weeks": 30,
     "ma_slope_lookback_weeks": 4,

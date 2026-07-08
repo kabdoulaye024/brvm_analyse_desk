@@ -76,33 +76,90 @@ def load_daily_prices(warnings: list) -> pd.DataFrame:
 
 # ── Benchmark BRVM 30 ────────────────────────────────────────────────────────
 
+def _run_r_export(warnings: list) -> None:
+    """
+    Lance export_brvm30.R (package R BRVM) si le fichier data/brvm30.csv est
+    absent ou plus vieux que r_export_max_age_days. Échec non bloquant :
+    la cascade de repli (DB -> composite -> synthétique) prend le relais.
+    """
+    import shutil
+    import subprocess
+    import time
+
+    if not config.PARAMS.get("r_export_enabled", False):
+        return
+    target = os.path.join(config.DATA_DIR, "brvm30.csv")
+    max_age = config.PARAMS["r_export_max_age_days"] * 86400
+    if os.path.exists(target) and (time.time() - os.path.getmtime(target)) < max_age:
+        return                                          # fichier encore frais
+    rscript = shutil.which("Rscript")
+    if rscript is None:
+        warnings.append("Export R : Rscript introuvable — installer R ou déposer "
+                        "data/brvm30.csv manuellement.")
+        return
+    script = os.path.join(config.BASE_DIR, "export_brvm30.R")
+    try:
+        res = subprocess.run(
+            [rscript, script, config.DATA_DIR, config.PARAMS["r_export_from"]],
+            capture_output=True, text=True,
+            timeout=config.PARAMS["r_export_timeout_s"])
+        if res.returncode == 0:
+            warnings.append("Export R : indice rafraîchi via le package BRVM "
+                            f"({(res.stdout or '').strip().splitlines()[-1] if res.stdout else 'ok'}).")
+        else:
+            tail = (res.stderr or res.stdout or "").strip().splitlines()
+            warnings.append(f"Export R : échec ({tail[-1] if tail else 'sans message'}).")
+    except subprocess.TimeoutExpired:
+        warnings.append("Export R : délai dépassé — benchmark de repli utilisé.")
+
+
+def _weekly_index(df: pd.DataFrame, value_col: str, as_of: pd.Timestamp) -> pd.Series:
+    """Fichier/DB -> série hebdo tronquée à la dernière cotation des titres."""
+    df = df.copy()
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    weekly = (df.dropna(subset=["date"]).set_index("date")[value_col]
+              .resample("W-FRI").last().dropna())
+    return weekly[weekly.index <= as_of + pd.Timedelta(days=6)]
+
+
 def load_benchmark(daily: pd.DataFrame, warnings: list) -> tuple[pd.Series, str]:
     """
-    Série hebdomadaire du benchmark. Essaie le BRVM 30 réel ; si l'historique
-    est trop court pour la force relative 26 semaines, construit un indice
-    synthétique équipondéré à partir de l'univers (repli documenté).
+    Série hebdomadaire du benchmark, alignée sur la dernière cotation des titres.
+    Cascade : brvm30.csv (rafraîchi automatiquement via le package R BRVM)
+    -> table indices de la DB -> brvm_composite.csv -> indice synthétique
+    équipondéré construit sur l'univers (dernier recours, documenté).
     """
     need_weeks = config.PARAMS["relative_strength_lookback_weeks"] + 4
+    as_of = daily["date"].max()
 
-    bench = None
+    _run_r_export(warnings)
+
+    # 1) Fichier brvm30 (déposé à la main ou produit par export_brvm30.R).
     df = _read_input("brvm30")
     if df is not None and {"date", "close"} <= set(df.columns):
-        bench = df.rename(columns={"close": "value"})
-    else:
-        db = _sql("SELECT date, value FROM indices WHERE index_name LIKE 'BRVM%30%' ORDER BY date")
-        if not db.empty:
-            bench = db
-    if bench is not None:
-        bench["date"] = pd.to_datetime(bench["date"], errors="coerce")
-        weekly = (bench.dropna(subset=["date"]).set_index("date")["value"]
-                  .resample("W-FRI").last().dropna())
+        weekly = _weekly_index(df, "close", as_of)
         if len(weekly) >= need_weeks:
             return weekly, "BRVM30"
-        warnings.append(
-            f"BRVM 30 : seulement {len(weekly)} semaines d'historique "
-            f"(minimum {need_weeks}) — benchmark synthétique équipondéré utilisé.")
+        warnings.append(f"brvm30.csv : {len(weekly)} semaines (< {need_weeks}) — repli.")
 
-    # Indice synthétique : moyenne équipondérée des variations hebdo des titres.
+    # 2) Table indices de la base SQLite.
+    db = _sql("SELECT date, value FROM indices WHERE index_name LIKE 'BRVM%30%' ORDER BY date")
+    if not db.empty:
+        weekly = _weekly_index(db, "value", as_of)
+        if len(weekly) >= need_weeks:
+            return weekly, "BRVM30 (DB)"
+        warnings.append(f"BRVM 30 (DB) : {len(weekly)} semaines (< {need_weeks}) — repli.")
+
+    # 3) BRVM Composite exporté par le script R (si le BRVM 30 était indisponible).
+    df = _read_input("brvm_composite")
+    if df is not None and {"date", "close"} <= set(df.columns):
+        weekly = _weekly_index(df, "close", as_of)
+        if len(weekly) >= need_weeks:
+            warnings.append("Benchmark : BRVM Composite utilisé à la place du BRVM 30.")
+            return weekly, "BRVM_COMPOSITE"
+
+    # 4) Indice synthétique : moyenne équipondérée des variations hebdo des titres.
+    warnings.append("Benchmark : indice synthétique équipondéré (aucun indice réel disponible).")
     px = (daily.set_index("date").groupby("ticker")["close"]
           .resample("W-FRI").last().unstack(level=0).ffill())
     rets = px.pct_change(fill_method=None).mean(axis=1).fillna(0)
