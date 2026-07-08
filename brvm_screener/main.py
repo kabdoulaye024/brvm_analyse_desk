@@ -148,6 +148,8 @@ def cli() -> None:
                         help="forcer le re-téléchargement du BRVM 30 via le package R")
     parser.add_argument("--open", dest="open_report", action="store_true",
                         help="ouvrir le rapport Excel à la fin (macOS)")
+    parser.add_argument("--desktop", action="store_true",
+                        help="copier le rapport sur le Bureau + notification macOS")
     args = parser.parse_args()
 
     if args.refresh:
@@ -161,10 +163,34 @@ def cli() -> None:
                 os.remove(path)
         print("Index : cache supprimé — export R forcé au chargement.\n")
 
-    _, report_path = run(args.halal_mode)
+    master, report_path = run(args.halal_mode)
 
+    if args.desktop and sys.platform == "darwin":
+        _publish_desktop(master, report_path)
     if args.open_report and sys.platform == "darwin":
         subprocess.run(["open", report_path], check=False)
+
+
+def _publish_desktop(master: pd.DataFrame, report_path: str) -> None:
+    """Copie le rapport sur le Bureau et envoie une notification de synthèse."""
+    import shutil
+    from datetime import date
+
+    desktop = os.path.expanduser("~/Desktop")
+    dest = os.path.join(desktop, "BRVM_Screener.xlsx")
+    shutil.copy2(report_path, dest)
+
+    buys = master[master["decision"].isin(["Achat fort", "Achat progressif"])]
+    strong = master[master["decision"] == "Achat fort"]
+    top3 = " · ".join(f"{t} {r['final_score']:.0f}" for t, r in master.head(3).iterrows())
+    title = (f"Screener BRVM {date.today():%d/%m} — "
+             f"{len(strong)} Achat(s) fort(s), {len(buys)} signaux d'achat")
+    subprocess.run(
+        ["osascript", "-e",
+         f'display notification "Top : {top3} — rapport sur le Bureau" '
+         f'with title "{title}" sound name "Glass"'],
+        check=False, capture_output=True)
+    print(f"🖥  Rapport copié sur le Bureau : {dest}")
 
 
 if __name__ == "__main__":

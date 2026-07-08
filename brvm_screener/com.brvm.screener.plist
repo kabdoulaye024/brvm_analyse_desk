@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.brvm.screener</string>
+
+    <!-- Chaîne complète du screener hybride BRVM, sans ouvrir Excel :
+         rafraîchit les données, met le rapport en évidence sur le Bureau
+         et envoie une notification macOS avec les signaux du jour. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/abdoulayekone/Claude_Code_BRVM/screener.sh</string>
+        <string>--no-open</string>
+        <string>--desktop</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/abdoulayekone/Claude_Code_BRVM</string>
+
+    <!-- launchd démarre avec un PATH minimal : python3 (anaconda) et Rscript. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/anaconda3/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <!-- Jours de bourse BRVM (lun-ven), 16h45 GMT = 1h15 après la clôture. -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>45</integer></dict>
+        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>45</integer></dict>
+        <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>45</integer></dict>
+        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>45</integer></dict>
+        <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>45</integer></dict>
+    </array>
+
+    <key>StandardOutPath</key>
+    <string>/Users/abdoulayekone/Claude_Code_BRVM/logs/screener_daily.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/abdoulayekone/Claude_Code_BRVM/logs/screener_daily.log</string>
+</dict>
+</plist>

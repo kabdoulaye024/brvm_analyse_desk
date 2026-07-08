@@ -33,6 +33,22 @@ screening → ouverture du rapport) : **`./screener.sh`** à la racine du projet
 Options : `off|flexible|strict`, `--no-refresh`, `--no-open`, `--force-index`,
 `--composite` (enchaîne aussi `run_screener.py`).
 
-Screener seul : `python -m brvm_screener.main [off|flexible|strict] [--refresh] [--open] [--force-index]`.
+Screener seul : `python -m brvm_screener.main [off|flexible|strict] [--refresh] [--open] [--desktop] [--force-index]`.
 Rafraîchissement seul : `python -m brvm_screener.refresh_data`.
 Sortie : `outputs/brvm_hybrid_screener_output.xlsx` (7 onglets).
+
+## Exécution quotidienne automatique (macOS)
+
+Le LaunchAgent `com.brvm.screener.plist` (copie versionnée dans ce package)
+lance `./screener.sh --no-open --desktop` chaque jour de bourse à **16h45 GMT**
+(clôture BRVM + 1h15) : données rafraîchies, rapport copié sur le Bureau
+(`~/Desktop/BRVM_Screener.xlsx`) et notification macOS avec les signaux du jour.
+Journal : `logs/screener_daily.log`.
+
+(Ré)installation :
+```bash
+cp brvm_screener/com.brvm.screener.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.brvm.screener.plist
+```
+Désactivation : `launchctl bootout gui/$(id -u)/com.brvm.screener`.
+Lancement manuel immédiat : `launchctl kickstart gui/$(id -u)/com.brvm.screener`.
