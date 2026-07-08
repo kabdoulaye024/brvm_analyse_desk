@@ -26,5 +26,13 @@ Cascade de benchmark : `brvm30.csv` → table `indices` (DB) → `brvm_composite
 → indice synthétique équipondéré (dernier recours, signalé dans le rapport).
 Désactivable via `PARAMS["r_export_enabled"] = False`.
 
-Lancement : `python -m brvm_screener.main [off|flexible|strict]` depuis la racine du projet.
+## Lancement
+
+Chaîne complète (rafraîchissement des cotations → export R de l'indice →
+screening → ouverture du rapport) : **`./screener.sh`** à la racine du projet.
+Options : `off|flexible|strict`, `--no-refresh`, `--no-open`, `--force-index`,
+`--composite` (enchaîne aussi `run_screener.py`).
+
+Screener seul : `python -m brvm_screener.main [off|flexible|strict] [--refresh] [--open] [--force-index]`.
+Rafraîchissement seul : `python -m brvm_screener.refresh_data`.
 Sortie : `outputs/brvm_hybrid_screener_output.xlsx` (7 onglets).

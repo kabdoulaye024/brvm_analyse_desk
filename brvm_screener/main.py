@@ -5,10 +5,16 @@ Graham (40 %) + Weinstein (30 %) + Catalyst (20 %) + Liquidité (10 %),
 halal flexible, export Excel multi-onglets.
 
 Usage :
-  python -m brvm_screener.main            # depuis la racine du projet
-  python -m brvm_screener.main strict     # halal_mode : off | flexible | strict
+  python -m brvm_screener.main                       # depuis la racine du projet
+  python -m brvm_screener.main strict                # halal_mode : off | flexible | strict
+  python -m brvm_screener.main --refresh --open      # rafraîchit les données puis ouvre le rapport
+  python -m brvm_screener.main --force-index         # force le re-téléchargement du BRVM 30 via R
+
+Chaîne complète en une commande : ./screener.sh (à la racine du projet).
 """
+import argparse
 import os
+import subprocess
 import sys
 
 import pandas as pd
@@ -131,6 +137,35 @@ def run(halal_mode: str | None = None) -> tuple[pd.DataFrame, str]:
     return master, path
 
 
+def cli() -> None:
+    parser = argparse.ArgumentParser(description="Screener hybride BRVM")
+    parser.add_argument("halal_mode", nargs="?", default=None,
+                        choices=["off", "flexible", "strict"],
+                        help="mode halal (défaut : flexible)")
+    parser.add_argument("--refresh", action="store_true",
+                        help="rafraîchir cotations/indices via les scrapers avant le screening")
+    parser.add_argument("--force-index", action="store_true",
+                        help="forcer le re-téléchargement du BRVM 30 via le package R")
+    parser.add_argument("--open", dest="open_report", action="store_true",
+                        help="ouvrir le rapport Excel à la fin (macOS)")
+    args = parser.parse_args()
+
+    if args.refresh:
+        from . import refresh_data
+        refresh_data.main()
+        print()
+    if args.force_index:
+        for f in ("brvm30.csv", "brvm_composite.csv"):
+            path = os.path.join(config.DATA_DIR, f)
+            if os.path.exists(path):
+                os.remove(path)
+        print("Index : cache supprimé — export R forcé au chargement.\n")
+
+    _, report_path = run(args.halal_mode)
+
+    if args.open_report and sys.platform == "darwin":
+        subprocess.run(["open", report_path], check=False)
+
+
 if __name__ == "__main__":
-    mode = sys.argv[1] if len(sys.argv) > 1 else None
-    run(mode)
+    cli()
